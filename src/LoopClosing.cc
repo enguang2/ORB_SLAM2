@@ -66,6 +66,8 @@ void LoopClosing::Run()
             // Detect loop candidates and check covisibility consistency
             if(DetectLoop())
             {
+                //Lets print the frame id ?
+
                // Compute similarity transformation [sR|t]
                // In the stereo/RGBD case s=1
                if(ComputeSim3())
@@ -221,6 +223,7 @@ bool LoopClosing::DetectLoop()
     }
     else
     {
+        // printf("LCD candidate at frame No. %d",mpCurrentKF->mnId);
         return true;
     }
 
@@ -330,6 +333,7 @@ bool LoopClosing::ComputeSim3()
                 {
                     bMatch = true;
                     mpMatchedKF = pKF;
+                    cout << "sim3_check, current frame id "<<mpCurrentKF->mnFrameId<<" matched to "<<mpMatchedKF->mnFrameId<<endl;
                     g2o::Sim3 gSmw(Converter::toMatrix3d(pKF->GetRotation()),Converter::toVector3d(pKF->GetTranslation()),1.0);
                     mg2oScw = gScm*gSmw;
                     mScw = Converter::toCvMat(mg2oScw);
@@ -400,11 +404,15 @@ bool LoopClosing::ComputeSim3()
 }
 
 void LoopClosing::CorrectLoop()
-{
+{   
+    // find associated LCD pair frame id 
     cout << "Loop detected!" << endl;
+    // cout <<"Corrected Loop at "<<mpCurrentKF->mnId<<endl;
+    cout <<"Corrected Loop at Frame ID: "<<mpCurrentKF->mnFrameId<<endl;
 
     // Send a stop signal to Local Mapping
     // Avoid new keyframes are inserted while correcting the loop
+    // Not really a real-time system, possible cause of LCD quasi-deterministic?
     mpLocalMapper->RequestStop();
 
     // If a Global Bundle Adjustment is running, abort it
