@@ -88,13 +88,13 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Local Mapping thread and launch
     mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
-    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
+    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);  //We call Run method on the mpLocalMapper object pointer
 
     //Initialize the Loop Closing thread and launch
     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
-    //Initialize the Viewer thread and launch
+    //Initialize the Viewer thread and launch, bUseViewer is passed as SLAM constructor parameter
     if(bUseViewer)
     {
         mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
@@ -226,6 +226,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     // Check mode change
     {
         unique_lock<mutex> lock(mMutexMode);
+        //shouldnt run
         if(mbActivateLocalizationMode)
         {
             mpLocalMapper->RequestStop();
@@ -238,12 +239,15 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
+            printf("mbActivateLocalizationMode mode is on");
         }
+        //shouldnt run
         if(mbDeactivateLocalizationMode)
         {
             mpTracker->InformOnlyTracking(false);
             mpLocalMapper->Release();
             mbDeactivateLocalizationMode = false;
+            printf("mbDeactivateLocalizationMode mode is on");
         }
     }
 
@@ -257,6 +261,8 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     }
     }
 
+    // We get camera to world pose
+    // mpTracker is declared in SLAM system constructor and TrackMonocular is called from main thread
     cv::Mat Tcw = mpTracker->GrabImageMonocular(im,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);

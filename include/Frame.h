@@ -160,7 +160,7 @@ public:
     static float mfGridElementHeightInv;
     std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
 
-    // Camera pose.
+    // Camera pose, homogeneous matrix, T == [R | t]
     cv::Mat mTcw;
 
     // Current and Next Frame id.
@@ -202,6 +202,9 @@ private:
     void AssignFeaturesToGrid();
 
     // Rotation, translation and camera center
+    // cw == camera to world?
+    // R == Rotation matrix
+    // t == translation vector
     cv::Mat mRcw;
     cv::Mat mtcw;
     cv::Mat mRwc;

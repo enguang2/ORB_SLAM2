@@ -45,12 +45,17 @@ int main(int argc, char **argv)
     // Retrieve paths to images
     vector<string> vstrImageFilenames;
     vector<double> vTimestamps;
+
+    //argv[3] == ../dataset/KITTI/data_odometry_gray/dataset/sequences/00
+    // vstrImageFilenames now has all images.png path
     LoadImages(string(argv[3]), vstrImageFilenames, vTimestamps);
 
     int nImages = vstrImageFilenames.size();
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
+    // It launches the Local Mapping, Loop Closing and Viewer threads.
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
+    // SLAM.ActivateLocalizationMode(); //seems we can use UI to do that, no don't do this
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
@@ -65,6 +70,7 @@ int main(int argc, char **argv)
     for(int ni=0; ni<nImages; ni++)
     {
         // Read image from file
+        // Read as OPENCV matrix and get its timestamp
         im = cv::imread(vstrImageFilenames[ni],CV_LOAD_IMAGE_UNCHANGED);
         double tframe = vTimestamps[ni];
 
@@ -81,6 +87,7 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the image to the SLAM system
+        // Launching thread, for receiving input frames and processing them for feature detection, matching, pose estimation
         SLAM.TrackMonocular(im,tframe);
 
 #ifdef COMPILEDWITHC11
@@ -93,22 +100,24 @@ int main(int argc, char **argv)
 
         vTimesTrack[ni]=ttrack;
 
-        // Wait to load the next frame
-        double T=0;
-        if(ni<nImages-1)
-            T = vTimestamps[ni+1]-tframe;
-        else if(ni>0)
-            T = tframe-vTimestamps[ni-1];
+        // Wait to load the next frame.
+        // This is to make SLAM time-consistent to original dataset?
+    //     double T=0;
+    //     if(ni<nImages-1)
+    //         T = vTimestamps[ni+1]-tframe; //Time interval between current frame and next frame
+    //     else if(ni>0)   //last frame
+    //         T = tframe-vTimestamps[ni-1];
 
-        if(ttrack<T)
-            usleep((T-ttrack)*1e6);
+    //     if(ttrack<T)
+    //         usleep((T-ttrack)*1e6); //usleep is in ms
+    // 
     }
 
     // Stop all threads
     SLAM.Shutdown();
 
     // Tracking time statistics
-    sort(vTimesTrack.begin(),vTimesTrack.end());
+    sort(vTimesTrack.begin(),vTimesTrack.end());    //to get median value 
     float totaltime = 0;
     for(int ni=0; ni<nImages; ni++)
     {
@@ -127,6 +136,8 @@ int main(int argc, char **argv)
     return 0;
 }
 
+// strPathToSequence == ../dataset/KITTI/data_odometry_gray/dataset/sequences/00
+// vstrImageFilenames stores all frames path
 void LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilenames, vector<double> &vTimestamps)
 {
     ifstream fTimes;
@@ -148,7 +159,7 @@ void LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilena
 
     string strPrefixLeft = strPathToSequence + "/image_0/";
 
-    const int nTimes = vTimestamps.size();
+    const int nTimes = vTimestamps.size();  //how many frames in total
     vstrImageFilenames.resize(nTimes);
 
     for(int i=0; i<nTimes; i++)

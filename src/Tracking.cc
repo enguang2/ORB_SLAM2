@@ -261,7 +261,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
 
     Track();
 
-    return mCurrentFrame.mTcw.clone();
+    return mCurrentFrame.mTcw.clone();  //return current frame camera_to_world pose
 }
 
 void Tracking::Track()
@@ -426,12 +426,12 @@ void Tracking::Track()
                 cv::Mat LastTwc = cv::Mat::eye(4,4,CV_32F);
                 mLastFrame.GetRotationInverse().copyTo(LastTwc.rowRange(0,3).colRange(0,3));
                 mLastFrame.GetCameraCenter().copyTo(LastTwc.rowRange(0,3).col(3));
-                mVelocity = mCurrentFrame.mTcw*LastTwc;
+                mVelocity = mCurrentFrame.mTcw*LastTwc; // relative transformation ?
             }
             else
                 mVelocity = cv::Mat();
 
-            mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+            mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);  // T camera_to_world
 
             // Clean VO matches
             for(int i=0; i<mCurrentFrame.N; i++)
