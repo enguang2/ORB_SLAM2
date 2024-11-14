@@ -102,15 +102,15 @@ int main(int argc, char **argv)
 
         // Wait to load the next frame.
         // This is to make SLAM time-consistent to original dataset?
-    //     double T=0;
-    //     if(ni<nImages-1)
-    //         T = vTimestamps[ni+1]-tframe; //Time interval between current frame and next frame
-    //     else if(ni>0)   //last frame
-    //         T = tframe-vTimestamps[ni-1];
+        double T=0;
+        if(ni<nImages-1)
+            T = vTimestamps[ni+1]-tframe; //Time interval between current frame and next frame
+        else if(ni>0)   //last frame
+            T = tframe-vTimestamps[ni-1];
 
-    //     if(ttrack<T)
-    //         usleep((T-ttrack)*1e6); //usleep is in ms
-    // 
+        if(ttrack<T)
+            usleep((T-ttrack)*1e6); //usleep is in ms
+    
     }
 
     // Stop all threads
