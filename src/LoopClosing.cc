@@ -64,6 +64,7 @@ void LoopClosing::Run()
         if(CheckNewKeyFrames())
         {
             // Detect loop candidates and check covisibility consistency
+            // mvpEnoughConsistentCandidates would contain KFs which passed visual and consistency checks 
             if(DetectLoop())
             {
                 //Lets print the frame id ?
@@ -106,7 +107,7 @@ bool LoopClosing::DetectLoop()
 {
     {
         unique_lock<mutex> lock(mMutexLoopQueue);
-        mpCurrentKF = mlpLoopKeyFrameQueue.front();
+        mpCurrentKF = mlpLoopKeyFrameQueue.front(); //mlpLoopKeyFrameQueue is FIFO
         mlpLoopKeyFrameQueue.pop_front();
         // Avoid that a keyframe can be erased while it is being process by this thread
         mpCurrentKF->SetNotErase();
@@ -140,6 +141,7 @@ bool LoopClosing::DetectLoop()
     }
 
     // Query the database imposing the minimum score
+    // Get all candidates KFs "vpCandidateKFs" based on solely vBoW check 
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectLoopCandidates(mpCurrentKF, minScore);
 
     // If there are no loop candidates, just add new keyframe and return false
@@ -155,24 +157,53 @@ bool LoopClosing::DetectLoop()
     // Each candidate expands a covisibility group (keyframes connected to the loop candidate in the covisibility graph)
     // A group is consistent with a previous group if they share at least a keyframe
     // We must detect a consistent loop in several consecutive keyframes to accept it
+
+    // Step 5：在候选帧中检测具有连续性的候选帧
+    // 1、每个候选帧将与自己相连的关键帧构成一个“子候选组spCandidateGroup”， vpCandidateKFs-->spCandidateGroup
+    // 2、检测“子候选组”中每一个关键帧是否存在于“连续组”，如果存在 nCurrentConsistency++，则将该“子候选组”放入“当前连续组vCurrentConsistentGroups”
+    // 3、如果nCurrentConsistency大于等于3，那么该”子候选组“代表的候选帧过关，进入mvpEnoughConsistentCandidates
+    
+    // 相关的概念说明:（为方便理解，见视频里的图示）
+    // 组(group): 对于某个关键帧, 其和其具有共视关系的关键帧组成了一个"组";
+    // 子候选组(CandidateGroup): 对于某个候选的回环关键帧, 其和其具有共视关系的关键帧组成的一个"组";
+    // 连续(Consistent):  不同的组之间如果共同拥有一个及以上的关键帧,那么称这两个组之间具有连续关系
+    // 连续性(Consistency):称之为连续长度可能更合适,表示累计的连续的链的长度:A--B 为1, A--B--C--D 为3等;具体反映在数据类型 ConsistentGroup.second上
+    // 连续组(Consistent group): mvConsistentGroups存储了上次执行回环检测时, 新的被检测出来的具有连续性的多个组的集合.由于组之间的连续关系是个网状结构,因此可能存在
+    //                          一个组因为和不同的连续组链都具有连续关系,而被添加两次的情况(当然连续性度量是不相同的)
+    // 连续组链:自造的称呼,类似于菊花链A--B--C--D这样形成了一条连续组链.对于这个例子中,由于可能E,F都和D有连续关系,因此连续组链会产生分叉;为了简化计算,连续组中将只会保存
+    //         最后形成连续关系的连续组们(见下面的连续组的更新)
+    // 子连续组: 上面的连续组中的一个组
+    // 连续组的初始值: 在遍历某个候选帧的过程中,如果该子候选组没有能够和任何一个上次的子连续组产生连续关系,那么就将添加自己组为连续组,并且连续性为0(相当于新开了一个连续链)
+    // 连续组的更新: 当前次回环检测过程中,所有被检测到和之前的连续组链有连续的关系的组,都将在对应的连续组链后面+1,这些子候选组(可能有重复,见上)都将会成为新的连续组;
+    //              换而言之连续组mvConsistentGroups中只保存连续组链中末尾的组
+
+    // 最终筛选后得到的闭环帧
+
     mvpEnoughConsistentCandidates.clear();
 
     vector<ConsistentGroup> vCurrentConsistentGroups;
     vector<bool> vbConsistentGroup(mvConsistentGroups.size(),false);
+
     for(size_t i=0, iend=vpCandidateKFs.size(); i<iend; i++)
     {
         KeyFrame* pCandidateKF = vpCandidateKFs[i];
 
+        // spCandidateGroup has all connected KFs of pCandidateKF (included)
         set<KeyFrame*> spCandidateGroup = pCandidateKF->GetConnectedKeyFrames();
         spCandidateGroup.insert(pCandidateKF);
 
-        bool bEnoughConsistent = false;
+        bool bEnoughConsistent = false; //ensure each pCandidateKF is inserted once
         bool bConsistentForSomeGroup = false;
+
+        // Loop all last-round consistent groups
         for(size_t iG=0, iendG=mvConsistentGroups.size(); iG<iendG; iG++)
         {
             set<KeyFrame*> sPreviousGroup = mvConsistentGroups[iG].first;
 
             bool bConsistent = false;
+
+            //iterate all KFs in spCandidateGroup, see if occured in sPreviousGroup before
+            //Once a consistent KF is found, break, no more seach
             for(set<KeyFrame*>::iterator sit=spCandidateGroup.begin(), send=spCandidateGroup.end(); sit!=send;sit++)
             {
                 if(sPreviousGroup.count(*sit))
@@ -193,6 +224,7 @@ bool LoopClosing::DetectLoop()
                     vCurrentConsistentGroups.push_back(cg);
                     vbConsistentGroup[iG]=true; //this avoid to include the same group more than once
                 }
+                // mnCovisibilityConsistencyTh == 3
                 if(nCurrentConsistency>=mnCovisibilityConsistencyTh && !bEnoughConsistent)
                 {
                     mvpEnoughConsistentCandidates.push_back(pCandidateKF);
@@ -202,6 +234,7 @@ bool LoopClosing::DetectLoop()
         }
 
         // If the group is not consistent with any previous group insert with consistency counter set to zero
+        // This would happen when we deal trivial KFs (think about iniaitally we has no LCD, this condition would be triggered often)
         if(!bConsistentForSomeGroup)
         {
             ConsistentGroup cg = make_pair(spCandidateGroup,0);
@@ -209,6 +242,7 @@ bool LoopClosing::DetectLoop()
         }
     }
 
+    // mvConsistentGroups is decalred in hearder file, exist across for loop iterations
     // Update Covisibility Consistent Groups
     mvConsistentGroups = vCurrentConsistentGroups;
 
@@ -227,8 +261,9 @@ bool LoopClosing::DetectLoop()
         return true;
     }
 
-    mpCurrentKF->SetErase();
-    return false;
+    // Never executed, skip
+    // mpCurrentKF->SetErase();
+    // return false;
 }
 
 bool LoopClosing::ComputeSim3()
