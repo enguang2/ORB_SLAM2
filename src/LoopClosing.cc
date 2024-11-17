@@ -233,6 +233,7 @@ bool LoopClosing::DetectLoop()
             }
         }
 
+        // This would be run only if none KF groups has overlapping with vCurrentConsistentGroups
         // If the group is not consistent with any previous group insert with consistency counter set to zero
         // This would happen when we deal trivial KFs (think about iniaitally we has no LCD, this condition would be triggered often)
         if(!bConsistentForSomeGroup)
@@ -266,6 +267,7 @@ bool LoopClosing::DetectLoop()
     // return false;
 }
 
+// mvpEnoughConsistentCandidates is propoerly updated by DetectLoop
 bool LoopClosing::ComputeSim3()
 {
     // For each consistent loop candidate we try to compute a Sim3
@@ -300,6 +302,7 @@ bool LoopClosing::ComputeSim3()
             continue;
         }
 
+        // mpCurrentKF is pop front from queue in DetectLoop function
         int nmatches = matcher.SearchByBoW(mpCurrentKF,pKF,vvpMapPointMatches[i]);
 
         if(nmatches<20)
@@ -308,7 +311,7 @@ bool LoopClosing::ComputeSim3()
             continue;
         }
         else
-        {
+        {   // Sim3 solver is set up but not executed yet
             Sim3Solver* pSolver = new Sim3Solver(mpCurrentKF,pKF,vvpMapPointMatches[i],mbFixScale);
             pSolver->SetRansacParameters(0.99,20,300);
             vpSim3Solvers[i] = pSolver;
@@ -368,13 +371,12 @@ bool LoopClosing::ComputeSim3()
                 {
                     bMatch = true;
                     mpMatchedKF = pKF;
-                    cout << "sim3_check, current frame id "<<mpCurrentKF->mnFrameId<<" matched to "<<mpMatchedKF->mnFrameId<<endl;
                     g2o::Sim3 gSmw(Converter::toMatrix3d(pKF->GetRotation()),Converter::toVector3d(pKF->GetTranslation()),1.0);
                     mg2oScw = gScm*gSmw;
                     mScw = Converter::toCvMat(mg2oScw);
 
                     mvpCurrentMatchedPoints = vpMapPointMatches;
-                    break;
+                    break;  // If we find a mpMatchedKF, we immediately stop searching on the rest candidates?
                 }
             }
         }
@@ -422,7 +424,8 @@ bool LoopClosing::ComputeSim3()
     }
 
     if(nTotalMatches>=40)
-    {
+    {   // Erase Non-Matching Candidates
+        // mpMatchedKF is the matched KF to mpCurrentKF
         for(int i=0; i<nInitialCandidates; i++)
             if(mvpEnoughConsistentCandidates[i]!=mpMatchedKF)
                 mvpEnoughConsistentCandidates[i]->SetErase();
@@ -442,8 +445,8 @@ void LoopClosing::CorrectLoop()
 {   
     // find associated LCD pair frame id 
     cout << "Loop detected!" << endl;
-    // cout <<"Corrected Loop at "<<mpCurrentKF->mnId<<endl;
-    cout <<"Corrected Loop at Frame ID: "<<mpCurrentKF->mnFrameId<<endl;
+    cout << "Current frame id "<<mpCurrentKF->mnFrameId<<" matched to "<<mpMatchedKF->mnFrameId<<endl;
+
 
     // Send a stop signal to Local Mapping
     // Avoid new keyframes are inserted while correcting the loop
